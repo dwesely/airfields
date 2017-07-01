@@ -11,8 +11,34 @@ import os
 from bs4 import BeautifulSoup
 import datetime
 import glob
+import csv
+import pprint
+import numpy as np
 
 base_url = "http://www.airfields-freeman.com/"    
+
+
+def haversine_np(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great circle distance between two points
+    on the earth (specified in decimal degrees)
+
+    All args must be of equal length.    
+
+    """
+    #https://stackoverflow.com/questions/29545704/fast-haversine-approximation-python-pandas
+
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+
+    a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
+
+    c = 2 * np.arcsin(np.sqrt(a))
+    km = 6367 * c
+    return km
+    
 
 def get_link_from_html(text):
     """Parse href link text out of html text"""
@@ -179,7 +205,7 @@ def read_airport_files():
             soup = BeautifulSoup(trimmed_html, 'html.parser')
             
             trimmed_text = soup.get_text()
-            airports = re.findall(r'__\s+(.{0,200})\s+(-?\d+.\d+), (-?\d+.\d+)',repr(trimmed_text))
+            airports = re.findall(r'_+_\s+([^_]{0,200}[)A-Z])\s+(-?\d+[.]?\d+)\s*[NnOoRrTtHh]*\s*[,/]\s*(-?\d+[.]?\d+)\s+',repr(trimmed_text))
             state = re.findall(r'Airfields_([A-Z]+)_?',thisFilename)
             state = state[0]
             link = '{}{}/{}'.format(base_url,state,thisFilename)
@@ -197,7 +223,16 @@ def compare_locations():
 
 def get_bts_airport_list():
     """Read BTS Master Coordinates list and return: Country, State, Airport name, Lat, Lon, Operational"""
-    return []
+    #TODO: Download an updated file from https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=288&DB_Short_Name=Aviation%20Support%20Tables
+    airport_list = []
+    with open('737306034_T_MASTER_CORD.csv', 'rb') as csvfile:
+        bts_airports = csv.reader(csvfile, delimiter=',', quotechar='"')
+        #Col 27: AIRPORT_IS_LATEST
+        #Col 7: AIRPORT_COUNTRY_CODE_ISO
+        for row in [row for row in bts_airports if row[27] == '1' and row[7] == 'US']:
+            print ', '.join(row)
+            airport_list.append({'airport':row[3], 'lat':row[18], 'lon':row[23], 'state':row[9], 'link':'https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=288&DB_Short_Name=Aviation%20Support%20Tables', 'thru':row[25], 'closed':row[26]})
+    return airport_list
 
 
 def get_nfdc_airport_list():
@@ -211,7 +246,13 @@ def main():
     write_csv_file(airports)
     write_kml_file(airports)
     
-    get_bts_airport_list()
+    bts_airports = get_bts_airport_list()
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(bts_airports)
+    
+    print('{} website airports parsed.'.format(len(airports)))
+    print('{} bts airports parsed.'.format(len(bts_airports)))
+    
     compare_locations()
     pass
 
