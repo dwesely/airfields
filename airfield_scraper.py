@@ -234,7 +234,7 @@ def compare_locations(airports,test_airports):
         lat1 = test_airport.get('lat')
         distances = haversine_np(lon1, lat1, airport_lon, airport_lat)
         closest = min(distances)
-        if closest > 2:
+        if closest > 2 and test_airport.get('closed') == '1':
             print(test_airport.get('closed'),test_airport.get('thru'),test_airport.get('state'),test_airport.get('airport'), test_airport.get('lat'), test_airport.get('lon'))
 
 
