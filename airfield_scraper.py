@@ -27,7 +27,12 @@ def haversine_np(lon1, lat1, lon2, lat2):
 
     """
     #https://stackoverflow.com/questions/29545704/fast-haversine-approximation-python-pandas
-
+    
+    #make the first value the same length as the second
+    if type(lon2) is list and type(lon1) is not list:
+        lon1 = [lon1]*len(lon2)
+        lat1 = [lat1]*len(lon2)
+        
     lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
 
     dlon = lon2 - lon1
@@ -68,14 +73,17 @@ def scrape_airports():
     """Download new files from Abandoned Airfields website"""
     #Checks update times, compares to file dates, only downloads updated pages
     #TODO: Check robots.txt to see if it was changed to disallow robots
+    print('Checking for updated files...')
     total_downloaded = 0
     response  = urllib2.urlopen(base_url)
     home_page = response.read()
     total_downloaded = total_downloaded + len(home_page)
-    links     = re.findall('HREF="([^.]+).htm"',home_page)
-    print(links)
+    #links     = re.findall('HREF="([^.]+).htm"',home_page)
+    #print(links)
+    
     home_soup = BeautifulSoup(home_page, 'html.parser')
     state_cells = home_soup.find_all('td')
+    
     #check this state for updates
     for state_cell in state_cells:
         #print(state_cell)
@@ -86,9 +94,10 @@ def scrape_airports():
         
         local_date = get_latest_file(state_file.replace('.htm','*.htm'))
 
-        print('{} last updated {}, local version updated {}'.format(deep_link,update_date,local_date))
+        #print('{} last updated {}, local version updated {}'.format(deep_link,update_date,local_date))
         
         if update_date > local_date:
+            print('{} last updated {}, local version updated {}'.format(deep_link,update_date,local_date))
             this_link  = '{}{}'.format(base_url,deep_link)
             response   = urllib2.urlopen(this_link)
             state_page = response.read()
@@ -200,7 +209,7 @@ def read_airport_files():
         if thisFilename.endswith(".htm"):
             #print(thisFilename)
             thisFile = open(thisFilename,'r+')
-            print('Parsing {}...'.format(thisFilename))
+            #print('Parsing {}...'.format(thisFilename))
             trimmed_html = re.sub(r'\s+',' ',thisFile.read().replace('\n',' '))
             soup = BeautifulSoup(trimmed_html, 'html.parser')
             
@@ -217,8 +226,16 @@ def read_airport_files():
     return airport_list
 
 
-def compare_locations():
+def compare_locations(airports,test_airports):
     """Check Abandoned Airfields locations against BTS and NFDC airport locations"""
+    airport_lat,airport_lon = get_lat_lon_from_list(airports)
+    for test_airport in test_airports:
+        lon1 = test_airport.get('lon')
+        lat1 = test_airport.get('lat')
+        distances = haversine_np(lon1, lat1, airport_lon, airport_lat)
+        closest = min(distances)
+        if closest > 2:
+            print(test_airport.get('closed'),test_airport.get('thru'),test_airport.get('state'),test_airport.get('airport'), test_airport.get('lat'), test_airport.get('lon'))
 
 
 def get_bts_airport_list():
@@ -228,16 +245,23 @@ def get_bts_airport_list():
     with open('737306034_T_MASTER_CORD.csv', 'rb') as csvfile:
         bts_airports = csv.reader(csvfile, delimiter=',', quotechar='"')
         #Col 27: AIRPORT_IS_LATEST
-        #Col 7: AIRPORT_COUNTRY_CODE_ISO
-        for row in [row for row in bts_airports if row[27] == '1' and row[7] == 'US']:
+        #Col  7: AIRPORT_COUNTRY_CODE_ISO
+        #Col 18: lat
+        for row in [row for row in bts_airports if row[27] == '1' and row[7] == 'US' and '.' in row[18]]:
             print ', '.join(row)
-            airport_list.append({'airport':row[3], 'lat':row[18], 'lon':row[23], 'state':row[9], 'link':'https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=288&DB_Short_Name=Aviation%20Support%20Tables', 'thru':row[25], 'closed':row[26]})
+            airport_list.append({'airport':row[3], 'lat':float(row[18]), 'lon':float(row[23]), 'state':row[9], 'link':'https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=288&DB_Short_Name=Aviation%20Support%20Tables', 'thru':row[25], 'closed':row[26]})
     return airport_list
 
 
 def get_nfdc_airport_list():
     """Read NFDC airport list and return: Country, State, Airport name, Lat, Lon, Operational"""
     return []
+    
+
+def get_lat_lon_from_list(airports):
+    lat = [float(airport.get('lat')) for airport in airports]
+    lon = [float(airport.get('lon')) for airport in airports]
+    return lat,lon
 
 
 def main():
@@ -247,13 +271,13 @@ def main():
     write_kml_file(airports)
     
     bts_airports = get_bts_airport_list()
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(bts_airports)
+    #pp = pprint.PrettyPrinter(indent=4)
+    #pp.pprint(bts_airports)
     
     print('{} website airports parsed.'.format(len(airports)))
     print('{} bts airports parsed.'.format(len(bts_airports)))
     
-    compare_locations()
+    compare_locations(airports,bts_airports)
     pass
 
 if __name__ == '__main__':
