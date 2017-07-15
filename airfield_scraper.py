@@ -190,7 +190,7 @@ def write_csv_file(items):
     csv_head = 'State,Airport,Lat,Lon,Link\n'
     csv_output_file.write(csv_head)
     for item in items:
-        print(type(item),item)
+        #print(type(item),item)
         csv_output_file.write('"{}","{}",{},{},"{}"\n'.format(item.get('state'),item.get('airport'),item.get('lat'),item.get('lon'),item.get('link')))
     csv_output_file.close()
     print('Done writing csv file.')
@@ -229,17 +229,28 @@ def read_airport_files():
 def compare_locations(airports,test_airports):
     """Check Abandoned Airfields locations against BTS and NFDC airport locations"""
     airport_lat,airport_lon = get_lat_lon_from_list(airports)
+    print('Closed,Start Date,Through Date,State,City,Name,lat,lon,link')
     for test_airport in test_airports:
         lon1 = test_airport.get('lon')
         lat1 = test_airport.get('lat')
         distances = haversine_np(lon1, lat1, airport_lon, airport_lat)
         closest = min(distances)
-        if closest > 2 and test_airport.get('closed') == '1':
-            print(test_airport.get('closed'),test_airport.get('thru'),test_airport.get('state'),test_airport.get('airport'), test_airport.get('lat'), test_airport.get('lon'))
+        if closest > 5 and test_airport.get('closed') == '1':
+            print('"{}","{}","{}","{}","{}","{}",{},{},"{}"'.format(
+                test_airport.get('closed'),
+                test_airport.get('start'),
+                test_airport.get('thru'),
+                test_airport.get('state'),
+                test_airport.get('city'),
+                test_airport.get('airport'), 
+                test_airport.get('lat'), 
+                test_airport.get('lon'), 
+                test_airport.get('link')))
 
 
 def get_bts_airport_list():
-    """Read BTS Master Coordinates list and return: Country, State, Airport name, Lat, Lon, Operational"""
+    """Read BTS Master Coordinates list and return airport details
+    Source: https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=288&DB_Short_Name=Aviation%20Support%20Tables"""
     #TODO: Download an updated file from https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=288&DB_Short_Name=Aviation%20Support%20Tables
     airport_list = []
     with open('737306034_T_MASTER_CORD.csv', 'rb') as csvfile:
@@ -248,8 +259,17 @@ def get_bts_airport_list():
         #Col  7: AIRPORT_COUNTRY_CODE_ISO
         #Col 18: lat
         for row in [row for row in bts_airports if row[27] == '1' and row[7] == 'US' and '.' in row[18]]:
-            print ', '.join(row)
-            airport_list.append({'airport':row[3], 'lat':float(row[18]), 'lon':float(row[23]), 'state':row[9], 'link':'https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=288&DB_Short_Name=Aviation%20Support%20Tables', 'thru':row[25], 'closed':row[26]})
+            #print ', '.join(row)
+            airport_list.append({'airport':row[3], 
+                                 'lat':float(row[18]), 
+                                 'lon':float(row[23]), 
+                                 'link':'https://skyvector.com/?ll=%s,%s&chart=301&zoom=1'%(row[18],row[23]),
+                                 'state':row[9], 
+                                 'city':row[4],
+                                 'start':row[24],
+                                 'thru':row[25], 
+                                 'closed':row[26], 
+                                 'id':row[2]})
     return airport_list
 
 
