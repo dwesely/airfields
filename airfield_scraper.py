@@ -151,11 +151,11 @@ def write_kml_file(items,base_name='abandoned_airports'):
     print('Writing kml files...')
     kml_output_file = open('./%s.kml'%base_name,'w')
     kml_head = '''<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
-<Document><name>abandoned_airports.kml</name>
+<Document><name>%s</name>
 	<Style id="sh_airports"><IconStyle><scale>1.4</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/airports.png</href></Icon><hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/></IconStyle><ListStyle></ListStyle></Style>
 	<Style id="sn_airports"><IconStyle><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/airports.png</href></Icon><hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/></IconStyle><ListStyle></ListStyle></Style>
 	<StyleMap id="msn_airports"><Pair><key>normal</key><styleUrl>#sn_airports</styleUrl></Pair><Pair><key>highlight</key><styleUrl>#sh_airports</styleUrl></Pair></StyleMap>
-  '''
+  '''%base_name
     kml_output_file.write(kml_head)
     recorded_states = dict()
 
@@ -223,10 +223,10 @@ def read_airport_files():
             link = '{}{}/{}'.format(base_url,state,thisFilename)
                 
             for airport,lat,lon,lon_direction in airports:
-                #TODO: check longitude direction East vs. West
-                if lon > 0 and lon < 135:
+                #TODO: check longitude direction East vs. West, this if statement is hacky
+                if float(lon) > 0 and float(lon) < 135:
                     """Longitude should be in the Western Hemisphere"""
-                    lon = lon*(-1)
+                    lon = '-%s'%lon
                 airport_list.append({'airport':airport, 'lat':lat, 'lon':lon, 'state':state, 'link':link})
             pass
     print('Done reading airport files.')
