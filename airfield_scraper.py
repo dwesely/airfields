@@ -146,10 +146,10 @@ def write_leaflet_file(items):
     print('Done writing leaflet file.')
     
     
-def write_kml_file(items):
+def write_kml_file(items,base_name='abandoned_airports'):
     """Write Google Earth kml file to import into Google Maps"""
     print('Writing kml files...')
-    kml_output_file = open('./abandoned_airports.kml','w')
+    kml_output_file = open('./%s.kml'%base_name,'w')
     kml_head = '''<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
 <Document><name>abandoned_airports.kml</name>
 	<Style id="sh_airports"><IconStyle><scale>1.4</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/airports.png</href></Icon><hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/></IconStyle><ListStyle></ListStyle></Style>
@@ -157,7 +157,7 @@ def write_kml_file(items):
 	<StyleMap id="msn_airports"><Pair><key>normal</key><styleUrl>#sn_airports</styleUrl></Pair><Pair><key>highlight</key><styleUrl>#sh_airports</styleUrl></Pair></StyleMap>
   '''
     kml_output_file.write(kml_head)
-    recorded_states = set()
+    recorded_states = dict()
 
     for item in items:
         if recorded_states and item.get('state') not in recorded_states:
@@ -168,11 +168,13 @@ def write_kml_file(items):
             kml_state_output_file.close()
         if item.get('state') not in recorded_states:
             kml_output_file.write('<Folder><name>{}</name><open>0</open>\n'.format(item.get('state')))
-            recorded_states.add(item.get('state'))
+            recorded_states[item.get('state')] = 1
     
-            kml_state_output_file = open('./abandoned_airports_{}.kml'.format(item.get('state')),'w')
+            kml_state_output_file = open('./{}_{}.kml'.format(base_name,item.get('state')),'w')
             kml_state_output_file.write(kml_head)
             kml_state_output_file.write('<Folder><name>{}</name><open>0</open>\n'.format(item.get('state')))
+        else:
+            recorded_states[item.get('state')] = recorded_states[item.get('state')] + 1
         placemark = '<Placemark><name>{}</name><description><![CDATA[<a href="{}">{}</a>]]></description><styleUrl>#msn_airports</styleUrl><Point><gx:drawOrder>1</gx:drawOrder><coordinates>{},{},0</coordinates></Point></Placemark>\n'.format(item.get('airport').replace('&',' and '),item.get('link'),'Link',item.get('lon'),item.get('lat'))
         kml_output_file.write(placemark)
         kml_state_output_file.write(placemark)
@@ -180,6 +182,7 @@ def write_kml_file(items):
     kml_output_file.write('</Document></kml>')
 
     kml_output_file.close()
+    print(recorded_states)
     print('Done writing kml files.')
     
     
@@ -214,44 +217,57 @@ def read_airport_files():
             soup = BeautifulSoup(trimmed_html, 'html.parser')
             
             trimmed_text = soup.get_text()
-            airports = re.findall(r'_+_\s+([^_]{0,200}[)A-Z])\s+(-?\d+[.]?\d+)\s*[NnOoRrTtHh]*\s*[,/]\s*(-?\d+[.]?\d+)\s+',repr(trimmed_text))
+            airports = re.findall(r'_+_\s+([^_]{0,200}[)A-Z])\s+(-?\d+[.]?\d+)\s*[NnOoRrTtHh]*\s*[,/]\s*(-?\d+[.]?\d+)\s+(\S+)',repr(trimmed_text))
             state = re.findall(r'Airfields_([A-Z]+)_?',thisFilename)
             state = state[0]
             link = '{}{}/{}'.format(base_url,state,thisFilename)
                 
-            for airport,lat,lon in airports:
+            for airport,lat,lon,lon_direction in airports:
+                #TODO: check longitude direction East vs. West
+                if lon > 0 and lon < 135:
+                    """Longitude should be in the Western Hemisphere"""
+                    lon = lon*(-1)
                 airport_list.append({'airport':airport, 'lat':lat, 'lon':lon, 'state':state, 'link':link})
             pass
     print('Done reading airport files.')
     return airport_list
 
 
-def compare_locations(airports,test_airports):
+def compare_locations(airports,test_airports,filter_dist=5):
     """Check Abandoned Airfields locations against BTS and NFDC airport locations"""
     airport_lat,airport_lon = get_lat_lon_from_list(airports)
+    missing_items = []
     print('Closed,Start Date,Through Date,State,City,Name,lat,lon,link')
     for test_airport in test_airports:
         lon1 = test_airport.get('lon')
         lat1 = test_airport.get('lat')
         distances = haversine_np(lon1, lat1, airport_lon, airport_lat)
         closest = min(distances)
-        if closest > 5 and test_airport.get('closed') == '1':
-            print('"{}","{}","{}","{}","{}","{}",{},{},"{}"'.format(
+        if closest > filter_dist and test_airport.get('closed') == '1':
+            missing_items.append({'airport':"{} ({})".format(test_airport.get('airport'),test_airport.get('id')), 
+                                  'lat':test_airport.get('lat'), 
+                                  'lon':test_airport.get('lon'), 
+                                  'state':test_airport.get('state'), 
+                                  'link':test_airport.get('link')})
+
+            print('"{}","{}","{}","{}","{}","{} ({})",{},{},"{}"'.format(
                 test_airport.get('closed'),
                 test_airport.get('start'),
                 test_airport.get('thru'),
                 test_airport.get('state'),
                 test_airport.get('city'),
                 test_airport.get('airport'), 
+                test_airport.get('id'), 
                 test_airport.get('lat'), 
                 test_airport.get('lon'), 
                 test_airport.get('link')))
-
+    write_kml_file(missing_items,base_name='missing_items')
 
 def get_bts_airport_list():
     """Read BTS Master Coordinates list and return airport details
     Source: https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=288&DB_Short_Name=Aviation%20Support%20Tables"""
     #TODO: Download an updated file from https://www.transtats.bts.gov/DL_SelectFields.asp?Table_ID=288&DB_Short_Name=Aviation%20Support%20Tables
+    #TODO: Allow closed or open runways to be returned
     airport_list = []
     with open('737306034_T_MASTER_CORD.csv', 'rb') as csvfile:
         bts_airports = csv.reader(csvfile, delimiter=',', quotechar='"')
@@ -298,6 +314,7 @@ def main():
     print('{} bts airports parsed.'.format(len(bts_airports)))
     
     compare_locations(airports,bts_airports)
+    #TODO: Check if open airports exist in the same location as the closed results
     pass
 
 if __name__ == '__main__':
