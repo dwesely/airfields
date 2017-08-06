@@ -2,6 +2,16 @@
 """
 Created on Fri Aug 21 06:34:14 2015
 
+Downloads and parses abandoned airport lists from http://www.airfields-freeman.com
+Compares BTS and NFDC airport lists
+Compares abandoned airport lists to list of "likely closed" airfields
+Writes results to kml
+
+BTS Master Coordinate Table available for download here: https://www.transtats.bts.gov/Tables.asp?DB_ID=595
+NFDC APT.txt file available for download here: https://nfdc.faa.gov/xwiki/bin/view/NFDC/28DaySub-2017-08-17
+
+Latest missing airfield results: https://drive.google.com/open?id=1pEgmk0KaD5EHEsIV-9tOjZyoTw0&usp=sharing
+
 @author: Wesely
 """
 
@@ -127,7 +137,11 @@ def scrape_airports():
                 if update_date > local_date:
                     this_deep_link = '{}{}/{}'.format(base_url,state,region_link)
                     print(this_deep_link)
-                    response     = urllib2.urlopen(this_deep_link)
+                    try:
+                        response     = urllib2.urlopen(this_deep_link)
+                    except:
+                        print('Error downloading, skipping.')
+                        continue
                     region_page  = response.read()
                     total_downloaded = total_downloaded + len(region_page)
                     airport_file = open('./{}'.format(region_link),'w')
@@ -158,23 +172,25 @@ def write_kml_file(items,base_name='abandoned_airports'):
   '''%base_name
     kml_output_file.write(kml_head)
     recorded_states = dict()
+    sorted_items = sorted(zip([item.get('state') for item in items],items))
+    
 
-    for item in items:
-        if recorded_states and item.get('state') not in recorded_states:
+    for state,item in sorted_items:
+        if recorded_states and state not in recorded_states:
             kml_output_file.write('</Folder>\n')
             
             kml_state_output_file.write('</Folder>\n')
             kml_state_output_file.write('</Document></kml>')
             kml_state_output_file.close()
-        if item.get('state') not in recorded_states:
-            kml_output_file.write('<Folder><name>{}</name><open>0</open>\n'.format(item.get('state')))
-            recorded_states[item.get('state')] = 1
+        if state not in recorded_states:
+            kml_output_file.write('<Folder><name>{}</name><open>0</open>\n'.format(state))
+            recorded_states[state] = 1
     
-            kml_state_output_file = open('./{}_{}.kml'.format(base_name,item.get('state')),'w')
+            kml_state_output_file = open('./{}_{}.kml'.format(base_name,state),'w')
             kml_state_output_file.write(kml_head)
-            kml_state_output_file.write('<Folder><name>{}</name><open>0</open>\n'.format(item.get('state')))
+            kml_state_output_file.write('<Folder><name>{}</name><open>0</open>\n'.format(state))
         else:
-            recorded_states[item.get('state')] = recorded_states[item.get('state')] + 1
+            recorded_states[state] = recorded_states[state] + 1
         placemark = '<Placemark><name>{}</name><description><![CDATA[<a href="{}">{}</a>]]></description><styleUrl>#msn_airports</styleUrl><Point><gx:drawOrder>1</gx:drawOrder><coordinates>{},{},0</coordinates></Point></Placemark>\n'.format(item.get('airport').replace('&',' and '),item.get('link'),'Link',item.get('lon'),item.get('lat'))
         kml_output_file.write(placemark)
         kml_state_output_file.write(placemark)
@@ -243,11 +259,15 @@ def compare_locations(airports,test_airports,filter_dist=5):
         lat1 = test_airport.get('lat')
         distances = haversine_np(lon1, lat1, airport_lon, airport_lat)
         closest = min(distances)
-        if closest > filter_dist and test_airport.get('closed') == '1':
-            missing_items.append({'airport':"{} ({})".format(test_airport.get('airport'),test_airport.get('id')), 
+        if closest > filter_dist:# and test_airport.get('closed') == '1':
+            missing_items.append({'airport':"{} ({})".format(test_airport.get('airport')), 
                                   'lat':test_airport.get('lat'), 
                                   'lon':test_airport.get('lon'), 
-                                  'state':test_airport.get('state'), 
+                                  'state':test_airport.get('state'),
+                                  'city':test_airport.get('city'),
+                                  'closed':test_airport.get('closed'),
+                                  'start':test_airport.get('start'),
+                                  'id':test_airport.get('id'),
                                   'link':test_airport.get('link')})
 
             print('"{}","{}","{}","{}","{}","{} ({})",{},{},"{}"'.format(
@@ -261,7 +281,9 @@ def compare_locations(airports,test_airports,filter_dist=5):
                 test_airport.get('lat'), 
                 test_airport.get('lon'), 
                 test_airport.get('link')))
+    #TODO: sort by state before writing to kml
     write_kml_file(missing_items,base_name='missing_items')
+    return missing_items
 
 def get_bts_airport_list():
     """Read BTS Master Coordinates list and return airport details
@@ -274,7 +296,7 @@ def get_bts_airport_list():
         #Col 27: AIRPORT_IS_LATEST
         #Col  7: AIRPORT_COUNTRY_CODE_ISO
         #Col 18: lat
-        for row in [row for row in bts_airports if row[27] == '1' and row[7] == 'US' and '.' in row[18]]:
+        for row in [row for row in bts_airports if row[7] == 'US' and '.' in row[18] and row[27] == '1']:
             #print ', '.join(row)
             airport_list.append({'airport':row[3], 
                                  'lat':float(row[18]), 
@@ -291,7 +313,128 @@ def get_bts_airport_list():
 
 def get_nfdc_airport_list():
     """Read NFDC airport list and return: Country, State, Airport name, Lat, Lon, Operational"""
-    return []
+    airport_list = []
+    i = 0
+    with open('APT.txt', 'rb') as aptfile:
+        line = aptfile.readline()
+        while len(line)>0:
+            try:
+                if line[0:3] == 'APT':
+                    i = i + 1
+                    #print(i)
+                    latsec = line[538:550].strip()
+                    lonsec = line[565:577].strip()
+                    NS = 1
+                    if latsec[-1] == 'S':
+                        NS = -1
+                    EW = 1
+                    if lonsec[-1] == 'W':
+                        EW = -1
+                    airport_list.append({'airport':line[133:183].strip(), 
+                                         'lat':NS*float(latsec[0:-1])/3600, 
+                                         'lon':EW*float(lonsec[0:-1])/3600, 
+                                         'link':'nfdc',
+                                         'state':line[48:50].strip(), 
+                                         'city':line[93:133].strip(),
+                                         'start':line[31:41].strip(),
+                                         'id':line[27:31].strip()})
+                line = aptfile.readline()
+                """
+                airport = dict()
+                airport["RECORD TYPE INDICATOR"] = line[0:3].strip()
+                airport["LANDING FACILITY SITE NUMBER"] = line[3:14].strip()
+                airport["LANDING FACILITY TYPE"] = line[14:27].strip()
+                airport["LOCATION IDENTIFIER"] = line[27:31].strip()
+                airport["INFORMATION EFFECTIVE DATE (MM/DD/YYYY)"] = line[31:41].strip()
+                airport["FAA REGION CODE"] = line[41:44].strip()
+                airport["FAA DISTRICT OR FIELD OFFICE CODE"] = line[44:48].strip()
+                airport["ASSOCIATED STATE POST OFFICE CODE"] = line[48:50].strip()
+                airport["ASSOCIATED STATE NAME"] = line[50:70].strip()
+                airport["ASSOCIATED COUNTY (OR PARISH) NAME"] = line[70:91].strip()
+                airport["ASSOCIATED COUNTY'S STATE (POST OFFICE CODE)"] = line[91:93].strip()
+                airport["ASSOCIATED CITY NAME"] = line[93:133].strip()
+                airport["OFFICIAL FACILITY NAME"] = line[133:183].strip()
+                airport["AIRPORT OWNERSHIP TYPE"] = line[183:185].strip()
+                airport["FACILITY USE"] = line[185:187].strip()
+                airport["FACILITY OWNER'S NAME"] = line[187:222].strip()
+                airport["OWNER'S ADDRESS"] = line[222:294].strip()
+                airport["OWNER'S CITY, STATE AND ZIP CODE"] = line[294:339].strip()
+                airport["FACILITY MANAGER'S NAME"] = line[355:390].strip()
+                airport["MANAGER'S ADDRESS"] = line[390:462].strip()
+                airport["MANAGER'S CITY, STATE AND ZIP CODE"] = line[462:507].strip()
+                airport["AIRPORT REFERENCE POINT LATITUDE (FORMATTED)"] = line[523:538].strip()
+                airport["AIRPORT REFERENCE POINT LATITUDE (SECONDS)"] = line[538:550].strip()
+                airport["AIRPORT REFERENCE POINT LONGITUDE (FORMATTED)"] = line[550:565].strip()
+                airport["AIRPORT REFERENCE POINT LONGITUDE (SECONDS)"] = line[565:577].strip()
+                airport["AIRPORT REFERENCE POINT DETERMINATION METHOD"] = line[577:578].strip()
+                airport["AIRPORT ELEVATION DETERMINATION METHOD"] = line[585:586].strip()
+                airport["MAGNETIC VARIATION AND DIRECTION"] = line[586:589].strip()
+                airport["MAGNETIC VARIATION EPOCH YEAR"] = line[589:593].strip()
+                airport["AERONAUTICAL SECTIONAL CHART ON WHICH FACILITY"] = line[597:627].strip()
+                airport["DISTANCE FROM CENTRAL BUSINESS DISTRICT OF"] = line[627:629].strip()
+                airport["DIRECTION OF AIRPORT FROM CENTRAL BUSINESS"] = line[629:632].strip()
+                airport["BOUNDARY ARTCC IDENTIFIER"] = line[637:641].strip()
+                airport["BOUNDARY ARTCC (FAA) COMPUTER IDENTIFIER"] = line[641:644].strip()
+                airport["BOUNDARY ARTCC NAME"] = line[644:674].strip()
+                airport["RESPONSIBLE ARTCC IDENTIFIER"] = line[674:678].strip()
+                airport["RESPONSIBLE ARTCC (FAA) COMPUTER IDENTIFIER"] = line[678:681].strip()
+                airport["RESPONSIBLE ARTCC NAME"] = line[681:711].strip()
+                airport["TIE-IN FSS PHYSICALLY LOCATED ON FACILITY"] = line[711:712].strip()
+                airport["TIE-IN FLIGHT SERVICE STATION (FSS) IDENTIFIER"] = line[712:716].strip()
+                airport["TIE-IN FSS NAME"] = line[716:746].strip()
+                airport["LOCAL PHONE NUMBER FROM AIRPORT TO FSS"] = line[746:762].strip()
+                airport["TOLL FREE PHONE NUMBER FROM AIRPORT TO FSS"] = line[762:778].strip()
+                airport["ALTERNATE FSS IDENTIFIER"] = line[778:782].strip()
+                airport["ALTERNATE FSS NAME"] = line[782:812].strip()
+                airport["TOLL FREE PHONE NUMBER FROM AIRPORT TO"] = line[812:828].strip()
+                airport["IDENTIFIER OF THE FACILITY RESPONSIBLE FOR"] = line[828:832].strip()
+                airport["AVAILABILITY OF NOTAM 'D' SERVICE AT AIRPORT"] = line[832:833].strip()
+                airport["AIRPORT ACTIVATION DATE (MM/YYYY)"] = line[833:840].strip()
+                airport["AIRPORT STATUS CODE"] = line[840:842].strip()
+                airport["AIRPORT ARFF CERTIFICATION TYPE AND DATE"] = line[842:857].strip()
+                airport["NPIAS/FEDERAL AGREEMENTS CODE"] = line[857:864].strip()
+                airport["AIRPORT AIRSPACE ANALYSIS DETERMINATION"] = line[864:877].strip()
+                airport["FACILITY HAS BEEN DESIGNATED BY THE U.S. TREASURY"] = line[877:878].strip()
+                airport["FACILITY HAS BEEN DESIGNATED BY THE U.S. TREASURY"] = line[878:879].strip()
+                airport["FACILITY HAS MILITARY/CIVIL JOINT USE AGREEMENT"] = line[879:880].strip()
+                airport["AIRPORT HAS ENTERED INTO AN AGREEMENT THAT"] = line[880:881].strip()
+                airport["AIRPORT INSPECTION METHOD"] = line[881:883].strip()
+                airport["AGENCY/GROUP PERFORMING PHYSICAL INSPECTION"] = line[883:884].strip()
+                airport["LAST PHYSICAL INSPECTION DATE (MMDDYYYY)"] = line[884:892].strip()
+                airport["LAST DATE INFORMATION REQUEST WAS COMPLETED"] = line[892:900].strip()
+                airport["FUEL TYPES AVAILABLE FOR PUBLIC USE AT THE"] = line[900:940].strip()
+                airport["AIRFRAME REPAIR SERVICE AVAILABILITY/TYPE"] = line[940:945].strip()
+                airport["POWER PLANT (ENGINE) REPAIR AVAILABILITY/TYPE"] = line[945:950].strip()
+                airport["TYPE OF BOTTLED OXYGEN AVAILABLE (VALUE REPRESENTS"] = line[950:958].strip()
+                airport["TYPE OF BULK OXYGEN AVAILABLE (VALUE REPRESENTS"] = line[958:966].strip()
+                airport["AIRPORT LIGHTING SCHEDULE"] = line[966:973].strip()
+                airport["BEACON LIGHTING SCHEDULE"] = line[973:980].strip()
+                airport["AIR TRAFFIC CONTROL TOWER LOCATED ON AIRPORT"] = line[980:981].strip()
+                airport["UNICOM FREQUENCY AVAILABLE AT THE AIRPORT"] = line[981:988].strip()
+                airport["COMMON TRAFFIC ADVISORY FREQUENCY (CTAF)"] = line[988:995].strip()
+                airport["SEGMENTED CIRCLE AIRPORT MARKER SYSTEM ON THE AIRPORT"] = line[995:999].strip()
+                airport["LENS COLOR OF OPERABLE BEACON LOCATED ON THE AIRPORT"] = line[999:1002].strip()
+                airport["LANDING FEE CHARGED TO NON-COMMERCIAL USERS OF"] = line[1002:1003].strip()
+                airport['A "Y" IN THIS FIELD INDICATES THAT THE LANDING'] = line[1003:1004].strip()
+                airport["12-MONTH ENDING DATE ON WHICH ANNUAL OPERATIONS DATA"] = line[1061:1071].strip()
+                airport["AIRPORT POSITION SOURCE"] = line[1071:1087].strip()
+                airport["AIRPORT POSITION SOURCE DATE (MM/DD/YYYY)"] = line[1087:1097].strip()
+                airport["AIRPORT ELEVATION SOURCE"] = line[1097:1113].strip()
+                airport["AIRPORT ELEVATION SOURCE DATE (MM/DD/YYYY)"] = line[1113:1123].strip()
+                airport["CONTRACT FUEL AVAILABLE"] = line[1123:1124].strip()
+                airport["TRANSIENT STORAGE FACILITIES"] = line[1124:1136].strip()
+                airport["OTHER AIRPORT SERVICES AVAILABLE"] = line[1136:1207].strip()
+                airport["WIND INDICATOR"] = line[1207:1210].strip()
+                airport["ICAO IDENTIFIER"] = line[1210:1217].strip()
+                airport["AIRPORT RECORD FILLER (BLANK)"] = line[1217:1529].strip()
+                """
+
+            except:
+                """This is a dumb solution."""
+                print(line)
+                break
+    print(i)
+    return airport_list
     
 
 def get_lat_lon_from_list(airports):
@@ -301,19 +444,30 @@ def get_lat_lon_from_list(airports):
 
 
 def main():
+    print('Scraping... %s' % datetime.datetime.now().time())
     scrape_airports()
+    print('Reading... %s' % datetime.datetime.now().time())
     airports = read_airport_files()
+    print('Writing csv... %s' % datetime.datetime.now().time())
     write_csv_file(airports)
+    print('Writing kml... %s' % datetime.datetime.now().time())
     write_kml_file(airports)
+    print('Reading BTS... %s' % datetime.datetime.now().time())
     
     bts_airports = get_bts_airport_list()
     #pp = pprint.PrettyPrinter(indent=4)
     #pp.pprint(bts_airports)
+    print('Reading NFDC... %s' % datetime.datetime.now().time())
+    nfdc_airports = get_nfdc_airport_list()
+    #print(nfdc_airports)
+    print('Finishing... %s' % datetime.datetime.now().time())
     
     print('{} website airports parsed.'.format(len(airports)))
     print('{} bts airports parsed.'.format(len(bts_airports)))
+    print('{} nfdc airports parsed.'.format(len(nfdc_airports)))
     
-    compare_locations(airports,bts_airports)
+    potential_missing_facilities = compare_locations(nfdc_airports,bts_airports)
+    compare_locations(airports,potential_missing_facilities)
     #TODO: Check if open airports exist in the same location as the closed results
     pass
 
