@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Fri Aug 21 06:34:14 2015
-
 Downloads and parses abandoned airport lists from http://www.airfields-freeman.com
 Compares BTS and NFDC airport lists
 Compares abandoned airport lists to list of "likely closed" airfields
@@ -260,7 +259,7 @@ def compare_locations(airports,test_airports,filter_dist=5):
         distances = haversine_np(lon1, lat1, airport_lon, airport_lat)
         closest = min(distances)
         if closest > filter_dist:# and test_airport.get('closed') == '1':
-            missing_items.append({'airport':"{} ({})".format(test_airport.get('airport')), 
+            missing_items.append({'airport':test_airport.get('airport'), 
                                   'lat':test_airport.get('lat'), 
                                   'lon':test_airport.get('lon'), 
                                   'state':test_airport.get('state'),
@@ -314,6 +313,10 @@ def get_bts_airport_list():
 def get_nfdc_airport_list():
     """Read NFDC airport list and return: Country, State, Airport name, Lat, Lon, Operational"""
     airport_list = []
+    nfdc_file = open('nfdc.csv','w')
+    nfdc_header = '"' + '","'.join(["RECORD TYPE INDICATOR".replace("'",''),"LANDING FACILITY SITE NUMBER".replace("'",''),"LANDING FACILITY TYPE".replace("'",''),"LOCATION IDENTIFIER".replace("'",''),"INFORMATION EFFECTIVE DATE (MM/DD/YYYY)".replace("'",''),"FAA REGION CODE".replace("'",''),"FAA DISTRICT OR FIELD OFFICE CODE".replace("'",''),"ASSOCIATED STATE POST OFFICE CODE".replace("'",''),"ASSOCIATED STATE NAME".replace("'",''),"ASSOCIATED COUNTY (OR PARISH) NAME".replace("'",''),"ASSOCIATED COUNTY'S STATE (POST OFFICE CODE)".replace("'",''),"ASSOCIATED CITY NAME".replace("'",''),"OFFICIAL FACILITY NAME".replace("'",''),"AIRPORT OWNERSHIP TYPE".replace("'",''),"FACILITY USE".replace("'",''),"FACILITY OWNER'S NAME".replace("'",''),"OWNER'S ADDRESS".replace("'",''),"OWNER'S CITY, STATE AND ZIP CODE".replace("'",''),"FACILITY MANAGER'S NAME".replace("'",''),"MANAGER'S ADDRESS".replace("'",''),"MANAGER'S CITY, STATE AND ZIP CODE".replace("'",''),"AIRPORT REFERENCE POINT LATITUDE (FORMATTED)".replace("'",''),"AIRPORT REFERENCE POINT LATITUDE (SECONDS)".replace("'",''),"AIRPORT REFERENCE POINT LONGITUDE (FORMATTED)".replace("'",''),"AIRPORT REFERENCE POINT LONGITUDE (SECONDS)".replace("'",''),"AIRPORT REFERENCE POINT DETERMINATION METHOD".replace("'",''),"AIRPORT ELEVATION DETERMINATION METHOD".replace("'",''),"MAGNETIC VARIATION AND DIRECTION".replace("'",''),"MAGNETIC VARIATION EPOCH YEAR".replace("'",''),"AERONAUTICAL SECTIONAL CHART ON WHICH FACILITY".replace("'",''),"DISTANCE FROM CENTRAL BUSINESS DISTRICT OF".replace("'",''),"DIRECTION OF AIRPORT FROM CENTRAL BUSINESS".replace("'",''),"BOUNDARY ARTCC IDENTIFIER".replace("'",''),"BOUNDARY ARTCC (FAA) COMPUTER IDENTIFIER".replace("'",''),"BOUNDARY ARTCC NAME".replace("'",''),"RESPONSIBLE ARTCC IDENTIFIER".replace("'",''),"RESPONSIBLE ARTCC (FAA) COMPUTER IDENTIFIER".replace("'",''),"RESPONSIBLE ARTCC NAME".replace("'",''),"TIE-IN FSS PHYSICALLY LOCATED ON FACILITY".replace("'",''),"TIE-IN FLIGHT SERVICE STATION (FSS) IDENTIFIER".replace("'",''),"TIE-IN FSS NAME".replace("'",''),"LOCAL PHONE NUMBER FROM AIRPORT TO FSS".replace("'",''),"TOLL FREE PHONE NUMBER FROM AIRPORT TO FSS".replace("'",''),"ALTERNATE FSS IDENTIFIER".replace("'",''),"ALTERNATE FSS NAME".replace("'",''),"TOLL FREE PHONE NUMBER FROM AIRPORT TO".replace("'",''),"IDENTIFIER OF THE FACILITY RESPONSIBLE FOR".replace("'",''),"AVAILABILITY OF NOTAM 'D' SERVICE AT AIRPORT".replace("'",''),"AIRPORT ACTIVATION DATE (MM/YYYY)".replace("'",''),"AIRPORT STATUS CODE".replace("'",''),"AIRPORT ARFF CERTIFICATION TYPE AND DATE".replace("'",''),"NPIAS/FEDERAL AGREEMENTS CODE".replace("'",''),"AIRPORT AIRSPACE ANALYSIS DETERMINATION".replace("'",''),"FACILITY HAS BEEN DESIGNATED BY THE U.S. TREASURY".replace("'",''),"FACILITY HAS BEEN DESIGNATED BY THE U.S. TREASURY".replace("'",''),"FACILITY HAS MILITARY/CIVIL JOINT USE AGREEMENT".replace("'",''),"AIRPORT HAS ENTERED INTO AN AGREEMENT THAT".replace("'",''),"AIRPORT INSPECTION METHOD".replace("'",''),"AGENCY/GROUP PERFORMING PHYSICAL INSPECTION".replace("'",''),"LAST PHYSICAL INSPECTION DATE (MMDDYYYY)".replace("'",''),"LAST DATE INFORMATION REQUEST WAS COMPLETED".replace("'",''),"FUEL TYPES AVAILABLE FOR PUBLIC USE AT THE".replace("'",''),"AIRFRAME REPAIR SERVICE AVAILABILITY/TYPE".replace("'",''),"POWER PLANT (ENGINE) REPAIR AVAILABILITY/TYPE".replace("'",''),"TYPE OF BOTTLED OXYGEN AVAILABLE (VALUE REPRESENTS".replace("'",''),"TYPE OF BULK OXYGEN AVAILABLE (VALUE REPRESENTS".replace("'",''),"AIRPORT LIGHTING SCHEDULE".replace("'",''),"BEACON LIGHTING SCHEDULE".replace("'",''),"AIR TRAFFIC CONTROL TOWER LOCATED ON AIRPORT".replace("'",''),"UNICOM FREQUENCY AVAILABLE AT THE AIRPORT".replace("'",''),"COMMON TRAFFIC ADVISORY FREQUENCY (CTAF)".replace("'",''),"SEGMENTED CIRCLE AIRPORT MARKER SYSTEM ON THE AIRPORT".replace("'",''),"LENS COLOR OF OPERABLE BEACON LOCATED ON THE AIRPORT".replace("'",''),"LANDING FEE CHARGED TO NON-COMMERCIAL USERS OF".replace("'",''),"A Y IN THIS FIELD INDICATES THAT THE LANDING".replace("'",''),"12-MONTH ENDING DATE ON WHICH ANNUAL OPERATIONS DATA".replace("'",''),"AIRPORT POSITION SOURCE".replace("'",''),"AIRPORT POSITION SOURCE DATE (MM/DD/YYYY)".replace("'",''),"AIRPORT ELEVATION SOURCE".replace("'",''),"AIRPORT ELEVATION SOURCE DATE (MM/DD/YYYY)".replace("'",''),"CONTRACT FUEL AVAILABLE".replace("'",''),"TRANSIENT STORAGE FACILITIES".replace("'",''),"OTHER AIRPORT SERVICES AVAILABLE".replace("'",''),"WIND INDICATOR".replace("'",''),"ICAO IDENTIFIER".replace("'",''),"AIRPORT RECORD FILLER (BLANK)".replace("'",'')]) + '"'
+    nfdc_file.write(nfdc_header)
+    
     i = 0
     with open('APT.txt', 'rb') as aptfile:
         line = aptfile.readline()
@@ -338,6 +341,9 @@ def get_nfdc_airport_list():
                                          'city':line[93:133].strip(),
                                          'start':line[31:41].strip(),
                                          'id':line[27:31].strip()})
+                    if len(line[48:50].strip()) > 0:
+                        nfdc_line = '\n"' + '","'.join([line[0:3].strip(),line[3:14].strip(),line[14:27].strip(),line[27:31].strip(),line[31:41].strip(),line[41:44].strip(),line[44:48].strip(),line[48:50].strip(),line[50:70].strip(),line[70:91].strip(),line[91:93].strip(),line[93:133].strip(),line[133:183].strip(),line[183:185].strip(),line[185:187].strip(),line[187:222].strip(),line[222:294].strip(),line[294:339].strip(),line[355:390].strip(),line[390:462].strip(),line[462:507].strip(),line[523:538].strip(),line[538:550].strip(),line[550:565].strip(),line[565:577].strip(),line[577:578].strip(),line[585:586].strip(),line[586:589].strip(),line[589:593].strip(),line[597:627].strip(),line[627:629].strip(),line[629:632].strip(),line[637:641].strip(),line[641:644].strip(),line[644:674].strip(),line[674:678].strip(),line[678:681].strip(),line[681:711].strip(),line[711:712].strip(),line[712:716].strip(),line[716:746].strip(),line[746:762].strip(),line[762:778].strip(),line[778:782].strip(),line[782:812].strip(),line[812:828].strip(),line[828:832].strip(),line[832:833].strip(),line[833:840].strip(),line[840:842].strip(),line[842:857].strip(),line[857:864].strip(),line[864:877].strip(),line[877:878].strip(),line[878:879].strip(),line[879:880].strip(),line[880:881].strip(),line[881:883].strip(),line[883:884].strip(),line[884:892].strip(),line[892:900].strip(),line[900:940].strip(),line[940:945].strip(),line[945:950].strip(),line[950:958].strip(),line[958:966].strip(),line[966:973].strip(),line[973:980].strip(),line[980:981].strip(),line[981:988].strip(),line[988:995].strip(),line[995:999].strip(),line[999:1002].strip(),line[1002:1003].strip(),line[1003:1004].strip(),line[1061:1071].strip(),line[1071:1087].strip(),line[1087:1097].strip(),line[1097:1113].strip(),line[1113:1123].strip(),line[1123:1124].strip(),line[1124:1136].strip(),line[1136:1207].strip(),line[1207:1210].strip(),line[1210:1217].strip(),line[1217:1529].strip()]) + '"'
+                        nfdc_file.write(nfdc_line)
                 line = aptfile.readline()
                 """
                 airport = dict()
@@ -434,6 +440,7 @@ def get_nfdc_airport_list():
                 print(line)
                 break
     print(i)
+    nfdc_file.close()
     return airport_list
     
 
